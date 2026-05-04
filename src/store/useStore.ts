@@ -10,12 +10,19 @@ import type {
   Preferences,
 } from '@/domain/types';
 import { buildSeedState } from './seed';
+import {
+  buildStateFromOnboarding,
+  type OnboardingForm,
+} from '@/features/onboarding/buildState';
 import { loadState, saveState, clearState as clearPersistence } from './persistence';
 
 interface StoreActions {
   hydrated: boolean;
+  needsOnboarding: boolean;
   hydrate: () => Promise<void>;
   reset: () => Promise<void>;
+  useDemoData: () => void;
+  completeOnboarding: (form: OnboardingForm) => void;
 
   setOpeningBalance: (amount: number) => void;
   setStressThresholds: (t: Preferences['stressThresholds']) => void;
@@ -48,28 +55,59 @@ const scheduleSave = (state: AppState) => {
   }, 200);
 };
 
-const baseSeed = buildSeedState();
+const emptyState: AppState = {
+  schemaVersion: 1,
+  profile: {
+    currency: 'CAD',
+    locale: 'fr-CA',
+    openingBalance: 0,
+    openingDate: new Date().toISOString().slice(0, 10),
+    createdAt: new Date().toISOString().slice(0, 10),
+  },
+  transactions: {},
+  recurringRules: {},
+  scenarios: {},
+  categories: {},
+  preferences: {
+    theme: 'dark',
+    accent: 'neon-violet',
+    stressThresholds: { critical: 100, warning: 500, comfortable: 2000 },
+    timeline: { defaultHorizonDays: 90, maxHorizonDays: 730 },
+    privacy: { blurAmounts: false },
+  },
+};
 
 export const useStore = create<Store>((set, get) => ({
-  ...baseSeed,
+  ...emptyState,
   hydrated: false,
+  needsOnboarding: false,
 
   hydrate: async () => {
     const persisted = await loadState();
     if (persisted) {
-      set({ ...persisted, hydrated: true });
+      set({ ...persisted, hydrated: true, needsOnboarding: false });
     } else {
-      const seed = buildSeedState();
-      set({ ...seed, hydrated: true });
-      void saveState(seed);
+      // No persisted state: keep empty state in memory and let the
+      // onboarding wizard collect real data (or skip with demo).
+      set({ ...emptyState, hydrated: true, needsOnboarding: true });
     }
   },
 
   reset: async () => {
     await clearPersistence();
+    set({ ...emptyState, hydrated: true, needsOnboarding: true });
+  },
+
+  useDemoData: () => {
     const seed = buildSeedState();
-    set({ ...seed, hydrated: true });
+    set({ ...seed, needsOnboarding: false });
     void saveState(seed);
+  },
+
+  completeOnboarding: (form) => {
+    const built = buildStateFromOnboarding(form);
+    set({ ...built, needsOnboarding: false });
+    void saveState(built);
   },
 
   setOpeningBalance: (amount) =>

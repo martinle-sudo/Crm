@@ -5,12 +5,14 @@ import { Eye, EyeOff, RefreshCw, Sparkles } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { Dashboard } from './Dashboard';
 import { IconButton } from '@/ui/IconButton';
+import { Onboarding } from '@/features/onboarding/Onboarding';
 
 export function App() {
   const hydrated = useStore((s) => s.hydrated);
   const hydrate = useStore((s) => s.hydrate);
   const reset = useStore((s) => s.reset);
   const blur = useStore((s) => s.preferences.privacy.blurAmounts);
+  const needsOnboarding = useStore((s) => s.needsOnboarding);
 
   useEffect(() => {
     void hydrate();
@@ -22,6 +24,10 @@ export function App() {
         Chargement…
       </div>
     );
+  }
+
+  if (needsOnboarding) {
+    return <Onboarding />;
   }
 
   const today = format(new Date(), 'EEEE d MMMM', { locale: fr });
@@ -61,7 +67,7 @@ export function App() {
           </IconButton>
           <IconButton
             onClick={() => {
-              if (confirm('Réinitialiser les données aux valeurs de démonstration ?')) {
+              if (confirm('Effacer toutes les données et recommencer la configuration ?')) {
                 void reset();
               }
             }}
