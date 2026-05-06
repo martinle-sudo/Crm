@@ -7,8 +7,27 @@ import type {
   RecurringRule,
   Category,
 } from '@/domain/types';
+import type { ExpenseFrequency } from './presets';
 
 export type IncomeFrequency = 'weekly' | 'biweekly' | 'semi-monthly' | 'monthly';
+
+export interface FixedExpenseEntry {
+  id: string;
+  label: string;
+  amount: number;
+  frequency: ExpenseFrequency;
+  dayOfMonth: number;          // 1-28, used when frequency === 'monthly'
+  weekday: number;             // 0-6 (Sun..Sat), used when frequency === 'weekly'
+  categoryId?: string;
+}
+
+export interface SubscriptionEntry {
+  id: string;
+  label: string;
+  vendor?: string;
+  amount: number;
+  dayOfMonth: number;
+}
 
 export interface OnboardingForm {
   currency: Currency;
@@ -20,20 +39,8 @@ export interface OnboardingForm {
     frequency: IncomeFrequency;
     firstDate: ISODate;
   };
-  fixedExpenses: Array<{
-    id: string;
-    label: string;
-    amount: number;
-    dayOfMonth: number;
-    categoryId?: string;
-  }>;
-  subscriptions: Array<{
-    id: string;
-    label: string;
-    vendor?: string;
-    amount: number;
-    dayOfMonth: number;
-  }>;
+  fixedExpenses: FixedExpenseEntry[];
+  subscriptions: SubscriptionEntry[];
   thresholds: { critical: number; warning: number; comfortable: number };
 }
 
@@ -57,42 +64,20 @@ function buildIncomeRRule(
   }
 }
 
+function buildExpenseRRule(entry: FixedExpenseEntry): string {
+  if (entry.frequency === 'weekly') {
+    const dow = WEEKDAY_LETTERS[clampWeekday(entry.weekday)];
+    return `FREQ=WEEKLY;BYDAY=${dow}`;
+  }
+  return `FREQ=MONTHLY;BYMONTHDAY=${clampDom(entry.dayOfMonth)}`;
+}
+
 const baseCategories = (): Record<string, Category> => ({
-  'cat-salary': {
-    id: 'cat-salary',
-    name: 'Revenus',
-    icon: 'briefcase',
-    color: '#6ee7b7',
-    type: 'income',
-  },
-  'cat-rent': {
-    id: 'cat-rent',
-    name: 'Logement',
-    icon: 'home',
-    color: '#fda4af',
-    type: 'fixed',
-  },
-  'cat-utilities': {
-    id: 'cat-utilities',
-    name: 'Services',
-    icon: 'plug',
-    color: '#67e8f9',
-    type: 'fixed',
-  },
-  'cat-subscription': {
-    id: 'cat-subscription',
-    name: 'Abonnements',
-    icon: 'repeat',
-    color: '#a78bfa',
-    type: 'fixed',
-  },
-  'cat-other': {
-    id: 'cat-other',
-    name: 'Autre',
-    icon: 'circle',
-    color: '#fcd34d',
-    type: 'variable',
-  },
+  'cat-salary': { id: 'cat-salary', name: 'Revenus', icon: 'briefcase', color: '#6ee7b7', type: 'income' },
+  'cat-rent': { id: 'cat-rent', name: 'Logement', icon: 'home', color: '#fda4af', type: 'fixed' },
+  'cat-utilities': { id: 'cat-utilities', name: 'Services', icon: 'plug', color: '#67e8f9', type: 'fixed' },
+  'cat-subscription': { id: 'cat-subscription', name: 'Abonnements', icon: 'repeat', color: '#a78bfa', type: 'fixed' },
+  'cat-other': { id: 'cat-other', name: 'Autre', icon: 'circle', color: '#fcd34d', type: 'variable' },
 });
 
 export function buildStateFromOnboarding(form: OnboardingForm): AppState {
@@ -121,8 +106,8 @@ export function buildStateFromOnboarding(form: OnboardingForm): AppState {
       kind: 'expense',
       label: exp.label,
       amount: -Math.abs(exp.amount),
-      categoryId: exp.categoryId ?? 'cat-rent',
-      rrule: `FREQ=MONTHLY;BYMONTHDAY=${clampDom(exp.dayOfMonth)}`,
+      categoryId: exp.categoryId ?? 'cat-other',
+      rrule: buildExpenseRRule(exp),
       startDate: today,
       exceptions: {},
     });
@@ -167,13 +152,8 @@ export function buildStateFromOnboarding(form: OnboardingForm): AppState {
 }
 
 const clampDom = (d: number) => Math.max(1, Math.min(28, Math.round(d)));
+const clampWeekday = (w: number) => Math.max(0, Math.min(6, Math.round(w)));
 
-/**
- * Suggest stress thresholds from declared monthly outflow.
- * critical    ≈ 5% of monthly outflow (a really thin cushion)
- * warning     ≈ 25% (one week of expenses)
- * comfortable ≈ 100% (one full month buffer)
- */
 export function suggestThresholds(
   monthlyOutflow: number,
 ): { critical: number; warning: number; comfortable: number } {
@@ -185,16 +165,14 @@ export function suggestThresholds(
   };
 }
 
-/**
- * Approximate monthly outflow given the form (income aside).
- * Subscriptions are assumed monthly; fixed expenses already monthly.
- * Income frequency is converted to monthly for inflow.
- */
 export function monthlyTotals(
   form: OnboardingForm,
 ): { inflow: number; outflow: number } {
   let outflow = 0;
-  for (const e of form.fixedExpenses) outflow += Math.abs(e.amount);
+  for (const e of form.fixedExpenses) {
+    const amt = Math.abs(e.amount);
+    outflow += e.frequency === 'weekly' ? amt * 4.345 : amt;
+  }
   for (const s of form.subscriptions) outflow += Math.abs(s.amount);
 
   const inc = Math.abs(form.income.amount);
@@ -207,5 +185,8 @@ export function monthlyTotals(
           ? inc * 2
           : inc;
 
-  return { inflow: Math.round(inflow), outflow: Math.round(outflow) };
+  return {
+    inflow: Math.round(inflow * 100) / 100,
+    outflow: Math.round(outflow * 100) / 100,
+  };
 }

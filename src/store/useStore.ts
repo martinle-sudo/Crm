@@ -23,6 +23,7 @@ interface StoreActions {
   reset: () => Promise<void>;
   useDemoData: () => void;
   completeOnboarding: (form: OnboardingForm) => void;
+  replaceState: (state: AppState) => void;
 
   setOpeningBalance: (amount: number) => void;
   setStressThresholds: (t: Preferences['stressThresholds']) => void;
@@ -108,6 +109,11 @@ export const useStore = create<Store>((set, get) => ({
     const built = buildStateFromOnboarding(form);
     set({ ...built, needsOnboarding: false });
     void saveState(built);
+  },
+
+  replaceState: (state) => {
+    set({ ...state, needsOnboarding: false, hydrated: true });
+    void saveState(state);
   },
 
   setOpeningBalance: (amount) =>

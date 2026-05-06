@@ -21,6 +21,7 @@ import { useStore } from '@/store/useStore';
 import { Button } from '@/ui/Button';
 import { IconButton } from '@/ui/IconButton';
 import { Money } from '@/ui/Money';
+import { MoneyInput } from '@/ui/MoneyInput';
 import { cn } from '@/ui/cn';
 import { toISO, fromISO } from '@/domain/dates';
 import {
@@ -28,10 +29,13 @@ import {
   suggestThresholds,
   type IncomeFrequency,
   type OnboardingForm,
+  type FixedExpenseEntry,
+  type SubscriptionEntry,
 } from './buildState';
 import {
   SUBSCRIPTION_PRESETS,
   FIXED_EXPENSE_PRESETS,
+  type ExpenseFrequency,
 } from './presets';
 
 const TOTAL_STEPS = 6;
@@ -75,7 +79,6 @@ export function Onboarding() {
   );
 
   const next = () => {
-    // Auto-suggest thresholds when entering recap step (unless user touched them)
     if (step === 4 && !thresholdsTouched) {
       setForm((f) => ({ ...f, thresholds: suggested }));
     }
@@ -92,12 +95,12 @@ export function Onboarding() {
       case 0:
         return true;
       case 1:
-        return form.currency && form.locale; // openingBalance can be 0
+        return Boolean(form.currency && form.locale);
       case 2:
         return form.income.label.trim().length > 0 && form.income.amount > 0;
       case 3:
       case 4:
-        return true; // optional steps
+        return true;
       case 5:
         return true;
       default:
@@ -274,13 +277,11 @@ const CURRENCIES = [
   { code: 'CHF', symbol: 'Fr', label: 'Franc suisse', locale: 'fr-CH' },
 ] as const;
 
-function StepProfile({
-  form,
-  setForm,
-}: {
-  form: OnboardingForm;
-  setForm: (f: OnboardingForm | ((f: OnboardingForm) => OnboardingForm)) => void;
-}) {
+type SetForm = (
+  f: OnboardingForm | ((f: OnboardingForm) => OnboardingForm),
+) => void;
+
+function StepProfile({ form, setForm }: { form: OnboardingForm; setForm: SetForm }) {
   return (
     <div className="space-y-6">
       <div>
@@ -299,9 +300,7 @@ function StepProfile({
                   : 'bg-white/[0.025] ring-white/[0.06] hover:bg-white/[0.05]',
               )}
             >
-              <div className="num-display text-lg font-semibold">
-                {c.symbol}
-              </div>
+              <div className="num-display text-lg font-semibold">{c.symbol}</div>
               <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">
                 {c.code}
               </div>
@@ -313,26 +312,21 @@ function StepProfile({
       <div>
         <Label>Solde actuel de ton compte</Label>
         <div className="relative mt-2">
-          <input
-            type="text"
-            inputMode="decimal"
-            value={form.openingBalance === 0 ? '' : form.openingBalance}
-            onChange={(e) => {
-              const n = parseFloat(e.target.value.replace(',', '.'));
-              setForm((f) => ({
-                ...f,
-                openingBalance: Number.isNaN(n) ? 0 : n,
-              }));
-            }}
+          <MoneyInput
+            value={form.openingBalance}
+            onChange={(v) =>
+              setForm((f) => ({ ...f, openingBalance: v }))
+            }
             placeholder="0"
-            className="num-display w-full text-4xl md:text-5xl font-semibold bg-transparent outline-none border-b border-white/10 focus:border-neon-violet/50 pb-3 transition-colors placeholder:text-zinc-700"
+            className="w-full text-4xl md:text-5xl font-semibold bg-transparent outline-none border-b border-white/10 focus:border-neon-violet/50 pb-3 transition-colors placeholder:text-zinc-700"
           />
           <span className="absolute right-0 bottom-3 text-zinc-500 text-sm">
             {form.currency}
           </span>
         </div>
         <p className="text-[11px] text-zinc-500 mt-2">
-          C'est le point de départ de toutes les projections.
+          C'est le point de départ de toutes les projections. Tu peux saisir
+          des décimales (ex. 1234.56).
         </p>
       </div>
     </div>
@@ -351,13 +345,7 @@ const FREQUENCIES: Array<{
   { key: 'monthly', label: 'Mensuel', hint: '1× par mois' },
 ];
 
-function StepIncome({
-  form,
-  setForm,
-}: {
-  form: OnboardingForm;
-  setForm: (f: OnboardingForm | ((f: OnboardingForm) => OnboardingForm)) => void;
-}) {
+function StepIncome({ form, setForm }: { form: OnboardingForm; setForm: SetForm }) {
   return (
     <div className="space-y-6">
       <div>
@@ -378,18 +366,16 @@ function StepIncome({
       <div>
         <Label>Montant net (par paie)</Label>
         <div className="relative mt-2">
-          <input
-            inputMode="decimal"
-            value={form.income.amount === 0 ? '' : form.income.amount}
-            onChange={(e) => {
-              const n = parseFloat(e.target.value.replace(',', '.'));
+          <MoneyInput
+            value={form.income.amount}
+            onChange={(v) =>
               setForm((f) => ({
                 ...f,
-                income: { ...f.income, amount: Number.isNaN(n) ? 0 : n },
-              }));
-            }}
+                income: { ...f.income, amount: v },
+              }))
+            }
             placeholder="2350"
-            className="num-display w-full text-3xl font-semibold bg-transparent outline-none border-b border-white/10 focus:border-neon-mint/50 pb-3 transition-colors placeholder:text-zinc-700"
+            className="w-full text-3xl font-semibold bg-transparent outline-none border-b border-white/10 focus:border-neon-mint/50 pb-3 transition-colors placeholder:text-zinc-700"
           />
           <span className="absolute right-0 bottom-3 text-zinc-500 text-sm">
             {form.currency}
@@ -449,12 +435,14 @@ function StepIncome({
 }
 
 // ---------- Step 3: Fixed Expenses ----------
+const WEEKDAY_LABELS_SHORT = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+
 function StepFixedExpenses({
   form,
   setForm,
 }: {
   form: OnboardingForm;
-  setForm: (f: OnboardingForm | ((f: OnboardingForm) => OnboardingForm)) => void;
+  setForm: SetForm;
 }) {
   const addCustom = () => {
     setForm((f) => ({
@@ -465,7 +453,9 @@ function StepFixedExpenses({
           id: nanoid(8),
           label: '',
           amount: 0,
+          frequency: 'monthly',
           dayOfMonth: 1,
+          weekday: 1,
           categoryId: 'cat-other',
         },
       ],
@@ -482,14 +472,16 @@ function StepFixedExpenses({
           id: nanoid(8),
           label: preset.label,
           amount: preset.defaultAmount,
-          dayOfMonth: preset.defaultDay,
+          frequency: preset.frequency,
+          dayOfMonth: preset.defaultDayOfMonth ?? 1,
+          weekday: preset.defaultWeekday ?? 1,
           categoryId: preset.categoryId,
         },
       ],
     }));
   };
 
-  const update = (id: string, patch: Partial<OnboardingForm['fixedExpenses'][number]>) => {
+  const update = (id: string, patch: Partial<FixedExpenseEntry>) => {
     setForm((f) => ({
       ...f,
       fixedExpenses: f.fixedExpenses.map((e) =>
@@ -505,32 +497,46 @@ function StepFixedExpenses({
     }));
   };
 
+  const monthlyPresets = FIXED_EXPENSE_PRESETS.filter((p) => p.frequency === 'monthly');
+  const weeklyPresets = FIXED_EXPENSE_PRESETS.filter((p) => p.frequency === 'weekly');
+
   return (
     <div className="space-y-5">
       <p className="text-sm text-zinc-400">
-        Loyer, services, virement épargne… ce qui revient chaque mois.
+        Loyer, services, virement épargne, épicerie hebdo… ce qui revient
+        chaque semaine ou chaque mois.
       </p>
 
       <div>
-        <Label>Ajouter rapidement</Label>
+        <Label>Mensuels</Label>
         <div className="flex flex-wrap gap-1.5 mt-2">
-          {FIXED_EXPENSE_PRESETS.map((p) => {
+          {monthlyPresets.map((p) => {
             const added = form.fixedExpenses.some((e) => e.label === p.label);
             return (
-              <button
+              <PresetChip
                 key={p.label}
+                label={p.label}
+                added={added}
                 onClick={() => addPreset(p)}
-                disabled={added}
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] ring-1 ring-inset transition-all',
-                  added
-                    ? 'bg-neon-mint/15 ring-neon-mint/30 text-neon-mint'
-                    : 'bg-white/[0.025] ring-white/[0.06] text-zinc-300 hover:bg-white/[0.06]',
-                )}
-              >
-                {added ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-                {p.label}
-              </button>
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <Label>Hebdomadaires</Label>
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {weeklyPresets.map((p) => {
+            const added = form.fixedExpenses.some((e) => e.label === p.label);
+            return (
+              <PresetChip
+                key={p.label}
+                label={p.label}
+                added={added}
+                tone="cyan"
+                onClick={() => addPreset(p)}
+              />
             );
           })}
         </div>
@@ -554,34 +560,50 @@ function StepFixedExpenses({
                 placeholder="Loyer"
                 className="flex-1 min-w-0 bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-zinc-600"
               />
-              <input
-                inputMode="decimal"
-                value={exp.amount === 0 ? '' : exp.amount}
-                onChange={(e) => {
-                  const n = parseFloat(e.target.value.replace(',', '.'));
-                  update(exp.id, { amount: Number.isNaN(n) ? 0 : n });
-                }}
+              <MoneyInput
+                value={exp.amount}
+                onChange={(v) => update(exp.id, { amount: v })}
                 placeholder="0"
-                className="num-display w-20 text-right bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-zinc-700"
+                className="w-24 text-right bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-zinc-700"
               />
-              <div className="flex items-center gap-1 bg-white/[0.04] rounded-lg px-2">
-                <span className="text-[10px] uppercase tracking-[0.1em] text-zinc-500">
-                  jour
-                </span>
-                <input
-                  inputMode="numeric"
-                  value={exp.dayOfMonth}
-                  onChange={(e) => {
-                    const n = parseInt(e.target.value, 10);
-                    update(exp.id, {
-                      dayOfMonth: Number.isNaN(n)
-                        ? 1
-                        : Math.max(1, Math.min(28, n)),
-                    });
-                  }}
-                  className="num-display w-7 text-center bg-transparent py-1.5 text-sm outline-none"
-                />
-              </div>
+              <FrequencyToggle
+                value={exp.frequency}
+                onChange={(freq) => update(exp.id, { frequency: freq })}
+              />
+              {exp.frequency === 'monthly' ? (
+                <div className="flex items-center gap-1 bg-white/[0.04] rounded-lg px-2">
+                  <span className="text-[10px] uppercase tracking-[0.1em] text-zinc-500">
+                    jour
+                  </span>
+                  <input
+                    inputMode="numeric"
+                    value={exp.dayOfMonth}
+                    onChange={(e) => {
+                      const n = parseInt(e.target.value, 10);
+                      update(exp.id, {
+                        dayOfMonth: Number.isNaN(n)
+                          ? 1
+                          : Math.max(1, Math.min(28, n)),
+                      });
+                    }}
+                    className="num-display w-7 text-center bg-transparent py-1.5 text-sm outline-none"
+                  />
+                </div>
+              ) : (
+                <select
+                  value={exp.weekday}
+                  onChange={(e) =>
+                    update(exp.id, { weekday: Number(e.target.value) })
+                  }
+                  className="bg-white/[0.04] rounded-lg px-2 py-1.5 text-xs outline-none cursor-pointer"
+                >
+                  {WEEKDAY_LABELS_SHORT.map((label, i) => (
+                    <option key={i} value={i} className="bg-ink-850">
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              )}
               <IconButton tone="coral" onClick={() => remove(exp.id)}>
                 <Trash2 className="h-3.5 w-3.5" />
               </IconButton>
@@ -601,13 +623,85 @@ function StepFixedExpenses({
   );
 }
 
+function FrequencyToggle({
+  value,
+  onChange,
+}: {
+  value: ExpenseFrequency;
+  onChange: (next: ExpenseFrequency) => void;
+}) {
+  return (
+    <div className="flex bg-white/[0.04] rounded-lg p-0.5 text-[10px] uppercase tracking-[0.1em]">
+      <button
+        onClick={() => onChange('monthly')}
+        className={cn(
+          'px-2 py-1 rounded-md transition-colors',
+          value === 'monthly'
+            ? 'bg-neon-violet/20 text-neon-violet'
+            : 'text-zinc-500 hover:text-zinc-300',
+        )}
+        title="Mensuel"
+      >
+        M
+      </button>
+      <button
+        onClick={() => onChange('weekly')}
+        className={cn(
+          'px-2 py-1 rounded-md transition-colors',
+          value === 'weekly'
+            ? 'bg-neon-cyan/20 text-neon-cyan'
+            : 'text-zinc-500 hover:text-zinc-300',
+        )}
+        title="Hebdomadaire"
+      >
+        H
+      </button>
+    </div>
+  );
+}
+
+function PresetChip({
+  label,
+  added,
+  tone = 'mint',
+  onClick,
+  trailing,
+}: {
+  label: string;
+  added: boolean;
+  tone?: 'mint' | 'cyan';
+  onClick: () => void;
+  trailing?: React.ReactNode;
+}) {
+  const addedClasses =
+    tone === 'cyan'
+      ? 'bg-neon-cyan/15 ring-neon-cyan/30 text-neon-cyan'
+      : 'bg-neon-mint/15 ring-neon-mint/30 text-neon-mint';
+  return (
+    <button
+      onClick={onClick}
+      disabled={added}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] ring-1 ring-inset transition-all',
+        added
+          ? addedClasses
+          : 'bg-white/[0.025] ring-white/[0.06] text-zinc-300 hover:bg-white/[0.06]',
+      )}
+    >
+      {added ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+      <span>{label}</span>
+      {trailing}
+    </button>
+  );
+}
+
 // ---------- Step 4: Subscriptions ----------
 function StepSubscriptions({
   form,
   setForm,
 }: {
   form: OnboardingForm;
-  setForm: (f: OnboardingForm | ((f: OnboardingForm) => OnboardingForm)) => void;
+  setForm: SetForm;
 }) {
   const total = form.subscriptions.reduce((a, s) => a + Math.abs(s.amount), 0);
 
@@ -638,7 +732,7 @@ function StepSubscriptions({
     }));
   };
 
-  const update = (id: string, patch: Partial<OnboardingForm['subscriptions'][number]>) => {
+  const update = (id: string, patch: Partial<SubscriptionEntry>) => {
     setForm((f) => ({
       ...f,
       subscriptions: f.subscriptions.map((s) =>
@@ -719,15 +813,11 @@ function StepSubscriptions({
                   placeholder="Netflix"
                   className="flex-1 min-w-0 bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-zinc-600"
                 />
-                <input
-                  inputMode="decimal"
-                  value={sub.amount === 0 ? '' : sub.amount}
-                  onChange={(e) => {
-                    const n = parseFloat(e.target.value.replace(',', '.'));
-                    update(sub.id, { amount: Number.isNaN(n) ? 0 : n });
-                  }}
+                <MoneyInput
+                  value={sub.amount}
+                  onChange={(v) => update(sub.id, { amount: v })}
                   placeholder="0"
-                  className="num-display w-20 text-right bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-zinc-700"
+                  className="w-24 text-right bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-zinc-700"
                 />
                 <IconButton tone="coral" onClick={() => remove(sub.id)}>
                   <Trash2 className="h-3.5 w-3.5" />
@@ -758,15 +848,13 @@ function StepRecap({
   onTouchThresholds,
 }: {
   form: OnboardingForm;
-  setForm: (f: OnboardingForm | ((f: OnboardingForm) => OnboardingForm)) => void;
+  setForm: SetForm;
   totals: { inflow: number; outflow: number };
   suggested: { critical: number; warning: number; comfortable: number };
   onTouchThresholds: () => void;
 }) {
   const projected = useMemo(() => {
-    // 30-day projection in head, just for the recap card.
-    const months = 1;
-    return form.openingBalance + (totals.inflow - totals.outflow) * months;
+    return form.openingBalance + (totals.inflow - totals.outflow);
   }, [form.openingBalance, totals]);
 
   const surplus = totals.inflow - totals.outflow;
@@ -785,10 +873,7 @@ function StepRecap({
           <Stat label="Sorties" tone="coral">
             <Money amount={-totals.outflow} compact />
           </Stat>
-          <Stat
-            label="Marge"
-            tone={surplus >= 0 ? 'mint' : 'coral'}
-          >
+          <Stat label="Marge" tone={surplus >= 0 ? 'mint' : 'coral'}>
             <Money amount={surplus} compact signDisplay="always" />
           </Stat>
         </div>
@@ -894,13 +979,9 @@ function ThresholdRow({
     <div className="flex items-center gap-3 rounded-xl bg-white/[0.025] ring-1 ring-inset ring-white/[0.06] px-3 py-2">
       <span className={cn('h-2 w-2 rounded-full', dotClass)} />
       <span className="text-xs text-zinc-300 w-20">{label}</span>
-      <input
-        inputMode="numeric"
+      <MoneyInput
         value={value}
-        onChange={(e) => {
-          const n = parseFloat(e.target.value.replace(',', '.'));
-          onChange(Number.isNaN(n) ? 0 : n);
-        }}
+        onChange={onChange}
         className="num-display flex-1 bg-transparent text-right text-sm outline-none"
       />
       <span className="text-[11px] text-zinc-500">{currency}</span>
@@ -935,7 +1016,6 @@ function Stat({
   );
 }
 
-// ---------- Shared ----------
 function Label({ children }: { children: React.ReactNode }) {
   return (
     <label className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-medium">

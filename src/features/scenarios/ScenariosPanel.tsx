@@ -12,6 +12,7 @@ import {
 import { useStore } from '@/store/useStore';
 import { createScenario, addOneOff } from '@/domain/scenarios';
 import { Money } from '@/ui/Money';
+import { MoneyInput } from '@/ui/MoneyInput';
 import { Button } from '@/ui/Button';
 import { IconButton } from '@/ui/IconButton';
 import { cn } from '@/ui/cn';
@@ -25,7 +26,7 @@ export function ScenariosPanel() {
 
   const [draftOpen, setDraftOpen] = useState(false);
   const [name, setName] = useState('');
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(0);
   const [daysAhead, setDaysAhead] = useState('30');
   const [direction, setDirection] = useState<'expense' | 'income'>('expense');
 
@@ -34,10 +35,8 @@ export function ScenariosPanel() {
   );
 
   const submit = () => {
-    if (!name.trim() || !amount) return;
-    const value = parseFloat(amount);
-    if (Number.isNaN(value)) return;
-    const signed = direction === 'expense' ? -Math.abs(value) : Math.abs(value);
+    if (!name.trim() || amount <= 0) return;
+    const signed = direction === 'expense' ? -Math.abs(amount) : Math.abs(amount);
     const date = toISO(addDays(new Date(), Number(daysAhead) || 0));
     let scenario = createScenario(name.trim());
     scenario = addOneOff(scenario, {
@@ -47,7 +46,7 @@ export function ScenariosPanel() {
     });
     upsert(scenario);
     setName('');
-    setAmount('');
+    setAmount(0);
     setDaysAhead('30');
     setDirection('expense');
     setDraftOpen(false);
@@ -119,12 +118,11 @@ export function ScenariosPanel() {
                     +
                   </button>
                 </div>
-                <input
+                <MoneyInput
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  onChange={setAmount}
                   placeholder="1500"
-                  inputMode="decimal"
-                  className="col-span-1 rounded-xl bg-white/5 px-3 py-2 text-sm placeholder:text-zinc-600 outline-none focus:ring-2 focus:ring-neon-violet/50 num-display"
+                  className="col-span-1 rounded-xl bg-white/5 px-3 py-2 text-sm placeholder:text-zinc-600 outline-none focus:ring-2 focus:ring-neon-violet/50"
                 />
                 <div className="col-span-1 flex items-center gap-2 rounded-xl bg-white/5 px-3">
                   <span className="text-zinc-500 text-xs">J+</span>
