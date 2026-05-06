@@ -1,0 +1,20 @@
+node_modules
+dist
+dist-ssr
+.vite
+.cache
+
+# Editor / OS
+.DS_Store
+.idea
+.vscode
+*.local
+*.log
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+*.tsbuildinfo
