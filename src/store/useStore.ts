@@ -18,53 +18,49 @@ import { buildSeedState } from './seed';
 import { todayISO, addDaysISO } from '@/domain/dates';
 import { DEFAULT_GST, DEFAULT_QST } from '@/domain/quebec';
 import { occurrenceDates, contractVisitAmount, contractVisitDuration } from '@/domain/scheduling';
-import { loadState, saveState, clearState } from './persistence';
+import {
+  backend, isApiMode, apiMe, apiLogin, apiLogout,
+  ENTITY_NAMES, SINGLETON_NAMES, type Change, type AuthUser,
+} from './backend';
 
 const id = () => nanoid(10);
 
+type AuthStatus = 'loading' | 'anon' | 'authed';
+
 interface Actions {
   hydrated: boolean;
+  auth: AuthStatus;
+  authUser: AuthUser | null;
+  syncError: string | null;
+
   hydrate: () => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
   reset: () => Promise<void>;
   replaceState: (state: AppState) => void;
   toggleBlur: () => void;
   updateCompany: (patch: Partial<Company>) => void;
 
-  // Clients
   upsertClient: (c: Omit<Client, 'id' | 'createdAt'> & { id?: string }) => string;
   removeClient: (id: string) => void;
-
-  // Services
   upsertService: (s: Omit<Service, 'id'> & { id?: string }) => string;
   removeService: (id: string) => void;
-
-  // Contracts
   upsertContract: (c: Omit<Contract, 'id' | 'createdAt'> & { id?: string }) => string;
   removeContract: (id: string) => void;
   generateInterventions: (contractId: string, untilDays?: number) => number;
-
-  // Employees
   upsertEmployee: (e: Omit<Employee, 'id'> & { id?: string }) => string;
   removeEmployee: (id: string) => void;
-
-  // Interventions
   upsertIntervention: (i: Omit<Intervention, 'id' | 'createdAt'> & { id?: string }) => string;
   removeIntervention: (id: string) => void;
   setInterventionStatus: (id: string, status: InterventionStatus) => void;
   toggleChecklistItem: (interventionId: string, itemId: string) => void;
-
-  // Invoices
   upsertInvoice: (i: Omit<Invoice, 'id' | 'createdAt' | 'number'> & { id?: string; number?: string }) => string;
   removeInvoice: (id: string) => void;
   markInvoicePaid: (id: string, method: Invoice['paymentMethod']) => void;
   invoiceFromIntervention: (interventionId: string) => string | null;
-
-  // Quotes
   upsertQuote: (q: Omit<Quote, 'id' | 'createdAt' | 'number'> & { id?: string; number?: string }) => string;
   removeQuote: (id: string) => void;
   convertQuoteToContract: (quoteId: string) => string | null;
-
-  // Leads
   upsertLead: (l: Omit<Lead, 'id' | 'createdAt'> & { id?: string }) => string;
   removeLead: (id: string) => void;
   setLeadStage: (id: string, stage: LeadStage) => void;
@@ -72,36 +68,108 @@ interface Actions {
 
 type Store = AppState & Actions;
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-const scheduleSave = (state: AppState) => {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => void saveState(state), 200);
+const defaultCompany: Company = {
+  name: 'Solutions Plan B',
+  defaultGstRate: DEFAULT_GST,
+  defaultQstRate: DEFAULT_QST,
 };
 
+function freshState(): AppState {
+  return {
+    schemaVersion: 1,
+    profile: { currency: 'CAD', locale: 'fr-CA' },
+    company: defaultCompany,
+    preferences: { privacy: { blurAmounts: false } },
+    counters: { invoice: 0, quote: 0 },
+    clients: {}, services: {}, contracts: {}, employees: {},
+    interventions: {}, invoices: {}, quotes: {}, leads: {},
+  };
+}
+
+/** Complète un état (potentiellement partiel, venant du serveur) avec les défauts. */
+function withDefaults(s: Partial<AppState>): AppState {
+  const base = freshState();
+  return {
+    schemaVersion: 1,
+    profile: s.profile ?? base.profile,
+    company: s.company ?? base.company,
+    preferences: s.preferences ?? base.preferences,
+    counters: s.counters ?? base.counters,
+    clients: s.clients ?? {},
+    services: s.services ?? {},
+    contracts: s.contracts ?? {},
+    employees: s.employees ?? {},
+    interventions: s.interventions ?? {},
+    invoices: s.invoices ?? {},
+    quotes: s.quotes ?? {},
+    leads: s.leads ?? {},
+  };
+}
+
 export const useStore = create<Store>((set, get) => ({
-  ...buildSeedState(),
+  ...freshState(),
   hydrated: false,
+  auth: 'loading',
+  authUser: null,
+  syncError: null,
 
   hydrate: async () => {
-    const persisted = await loadState();
-    if (persisted) set({ ...persisted, hydrated: true });
-    else {
+    // Remonte les erreurs de synchro serveur dans l'UI.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('crm-sync-error', (e) => {
+        set({ syncError: (e as CustomEvent).detail as string });
+      });
+    }
+
+    if (isApiMode()) {
+      try {
+        const user = await apiMe();
+        if (!user) {
+          set({ auth: 'anon', hydrated: true });
+          return;
+        }
+        const state = await backend.loadState();
+        set({ ...withDefaults(state ?? {}), authUser: user, auth: 'authed', hydrated: true });
+      } catch {
+        set({ auth: 'anon', hydrated: true });
+      }
+      return;
+    }
+
+    // Mode local : IndexedDB, avec données de démo au premier lancement.
+    const persisted = await backend.loadState();
+    if (persisted) {
+      set({ ...persisted, auth: 'authed', hydrated: true });
+    } else {
       const seed = buildSeedState();
-      set({ ...seed, hydrated: true });
-      void saveState(seed);
+      set({ ...seed, auth: 'authed', hydrated: true });
+      void backend.bulk(seed);
+    }
+  },
+
+  login: async (email, password) => {
+    const user = await apiLogin(email, password); // lève une erreur si échec
+    const state = await backend.loadState();
+    set({ ...withDefaults(state ?? {}), authUser: user, auth: 'authed', syncError: null });
+  },
+
+  logout: async () => {
+    try {
+      await apiLogout();
+    } finally {
+      set({ ...freshState(), auth: 'anon', authUser: null });
     }
   },
 
   reset: async () => {
-    await clearState();
     const seed = buildSeedState();
-    set({ ...seed, hydrated: true });
-    void saveState(seed);
+    await backend.bulk(seed);
+    set({ ...seed, auth: get().auth === 'anon' ? 'authed' : get().auth, hydrated: true });
   },
 
   replaceState: (state) => {
-    set({ ...state, hydrated: true });
-    void saveState(state);
+    set({ ...withDefaults(state), hydrated: true });
+    void backend.bulk(withDefaults(state));
   },
 
   toggleBlur: () =>
@@ -336,7 +404,6 @@ export const useStore = create<Store>((set, get) => ({
     const s = get();
     const q = s.quotes[quoteId];
     if (!q || q.convertedContractId) return q?.convertedContractId ?? null;
-    // créer le client s'il n'existe pas
     let clientId = q.clientId;
     const newRecords: Partial<AppState> = {};
     if (!clientId) {
@@ -403,6 +470,10 @@ function omit<K extends keyof AppState>(
   return { [field]: next } as unknown as Partial<AppState>;
 }
 
+/**
+ * Applique un patch en mémoire, calcule les changements (diff par référence)
+ * et les pousse au backend (IndexedDB en local, MySQL via PHP en mode serveur).
+ */
 function persist(
   set: (partial: Partial<Store>) => void,
   get: () => Store,
@@ -411,7 +482,28 @@ function persist(
   const current = get();
   const patch = updater(current);
   set(patch);
-  scheduleSave(stripActions({ ...current, ...patch }));
+  const before = stripActions(current);
+  const after = stripActions({ ...current, ...patch } as Store);
+  backend.sync(diffChanges(before, after), after);
+}
+
+function diffChanges(before: AppState, after: AppState): Change[] {
+  const changes: Change[] = [];
+  for (const entity of ENTITY_NAMES) {
+    const b = before[entity] as Record<string, { id: string }>;
+    const a = after[entity] as Record<string, { id: string }>;
+    if (b === a) continue;
+    for (const key in a) {
+      if (a[key] !== b[key]) changes.push({ op: 'upsert', entity, record: a[key] });
+    }
+    for (const key in b) {
+      if (!(key in a)) changes.push({ op: 'delete', entity, id: key });
+    }
+  }
+  for (const key of SINGLETON_NAMES) {
+    if (before[key] !== after[key]) changes.push({ op: 'singleton', key, value: after[key] });
+  }
+  return changes;
 }
 
 function stripActions(s: Store): AppState {
@@ -424,5 +516,3 @@ function stripActions(s: Store): AppState {
     clients, services, contracts, employees, interventions, invoices, quotes, leads,
   };
 }
-
-export const DEFAULTS = { gst: DEFAULT_GST, qst: DEFAULT_QST };

@@ -1,0 +1,15 @@
+# Protège les fichiers sensibles du backend.
+
+# Bloque l'accès direct à la config et aux fichiers SQL.
+<FilesMatch "(config\.php|config\.sample\.php|\.sql)$">
+    Require all denied
+</FilesMatch>
+
+# Empêche le listage du dossier.
+Options -Indexes
+
+# En-têtes de sécurité de base.
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+</IfModule>

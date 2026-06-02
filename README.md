@@ -65,3 +65,20 @@ npm run build    # build de production
 Au premier lancement, un jeu de données de démonstration réaliste est chargé
 (clients, contrats, interventions, factures, soumissions, prospects). Le bouton
 ⟳ dans l'en-tête réinitialise les données.
+
+## Deux modes d'exécution
+
+Le CRM fonctionne avec ou sans serveur, selon la valeur de `apiBase` dans
+`config.js` (éditable sans recompiler) :
+
+- **Local** (`apiBase: ''`, défaut) — données dans le navigateur (IndexedDB).
+  Idéal pour tester ou un usage solo.
+- **Serveur** (`apiBase: 'api'`) — backend **PHP + MySQL** (dossier `api/`),
+  avec connexion et données partagées entre tous les postes. Conçu pour
+  l'hébergement partagé Dreamhost.
+
+Backend : PDO (requêtes préparées), authentification par session (bcrypt,
+cookies HttpOnly/Secure), protection CSRF. Un seul fichier de config
+(`api/config.php`) à remplir.
+
+👉 **Guide de déploiement complet (Dreamhost) : voir [`DEPLOY.md`](./DEPLOY.md).**

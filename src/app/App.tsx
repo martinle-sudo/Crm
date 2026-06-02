@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff, RefreshCw, Menu, X, Download } from 'lucide-react';
+import { Eye, EyeOff, RefreshCw, Menu, X, Download, LogOut, AlertTriangle } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useStore } from '@/store/useStore';
+import { isApiMode } from '@/store/backend';
 import { IconButton } from '@/ui/IconButton';
 import { Sidebar } from './Sidebar';
+import { Login } from '@/features/auth/Login';
 import { VIEW_TITLES, type View } from './nav';
 import { longDate } from '@/domain/dates';
 import { todayISO } from '@/domain/dates';
@@ -27,6 +29,10 @@ export function App() {
   const reset = useStore((s) => s.reset);
   const blur = useStore((s) => s.preferences.privacy.blurAmounts);
   const toggleBlur = useStore((s) => s.toggleBlur);
+  const auth = useStore((s) => s.auth);
+  const authUser = useStore((s) => s.authUser);
+  const logout = useStore((s) => s.logout);
+  const syncError = useStore((s) => s.syncError);
 
   const [view, setView] = useState<View>('dashboard');
   const [mobileNav, setMobileNav] = useState(false);
@@ -35,12 +41,16 @@ export function App() {
     void hydrate();
   }, [hydrate]);
 
-  if (!hydrated) {
+  if (!hydrated || auth === 'loading') {
     return (
       <div className="flex min-h-screen items-center justify-center text-zinc-500">
         Chargement…
       </div>
     );
+  }
+
+  if (auth === 'anon') {
+    return <Login />;
   }
 
   const exportData = () => {
@@ -121,8 +131,24 @@ export function App() {
             >
               <RefreshCw className="h-4 w-4" />
             </IconButton>
+            {isApiMode() && (
+              <IconButton
+                onClick={() => { if (confirm('Se déconnecter ?')) void logout(); }}
+                title={authUser ? `Déconnexion (${authUser.name})` : 'Déconnexion'}
+                tone="coral"
+              >
+                <LogOut className="h-4 w-4" />
+              </IconButton>
+            )}
           </div>
         </header>
+
+        {syncError && (
+          <div className="flex items-center gap-2 border-b border-neon-coral/20 bg-neon-coral/10 px-5 py-2 text-xs text-neon-coral md:px-8">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            Synchronisation serveur interrompue : {syncError}. Vos changements récents pourraient ne pas être sauvegardés.
+          </div>
+        )}
 
         <main className="mx-auto w-full max-w-[1500px] flex-1 px-5 py-6 md:px-8">
           <ViewRouter view={view} onNavigate={setView} />

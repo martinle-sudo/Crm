@@ -16,5 +16,8 @@ dist-ssr
 .env.local
 .env.*.local
 
+# Secrets du backend (identifiants MySQL) — ne JAMAIS versionner
+api/config.php
+
 # Build artifacts
 *.tsbuildinfo
