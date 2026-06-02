@@ -25,8 +25,6 @@ export default defineConfig(({ command }) => ({
       output: {
         manualChunks: {
           recharts: ['recharts'],
-          rrule: ['rrule'],
-          dnd: ['@dnd-kit/core', '@dnd-kit/utilities'],
           framer: ['framer-motion'],
         },
       },

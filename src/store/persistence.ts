@@ -1,7 +1,7 @@
 import { get, set, del } from 'idb-keyval';
 import type { AppState } from '@/domain/types';
 
-const DB_KEY = 'cashflow-state-v1';
+const DB_KEY = 'solutions-plan-b-crm-v1';
 
 export async function loadState(): Promise<AppState | null> {
   try {

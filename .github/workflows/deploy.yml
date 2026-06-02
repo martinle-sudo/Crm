@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - claude/cashflow-forecast-app-ZfUc7
+      - claude/solutions-plan-b-crm-XDFom
   workflow_dispatch:
 
 permissions:
