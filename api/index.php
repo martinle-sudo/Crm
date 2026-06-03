@@ -31,10 +31,14 @@ switch ($action) {
     case 'logout':  do_logout();
     case 'me':      do_me();
 
-    case 'state':   require_auth(); do_state();
-    case 'upsert':  require_auth(); require_csrf(); do_upsert();
-    case 'delete':  require_auth(); require_csrf(); do_delete();
-    case 'bulk':    require_auth(); require_csrf(); do_bulk();
+    case 'state':           require_auth(); do_state();
+    case 'upsert':          require_auth(); require_csrf(); do_upsert();
+    case 'delete':          require_auth(); require_csrf(); do_delete();
+    case 'bulk':            require_auth(); require_csrf(); do_bulk();
+
+    case 'users_list':      require_admin(); do_users_list();
+    case 'users_upsert':    require_admin(); require_csrf(); do_users_upsert();
+    case 'users_toggle':    require_admin(); require_csrf(); do_users_toggle();
 
     default:
         json_error('Action inconnue : ' . $action, 404);
@@ -116,6 +120,15 @@ function do_delete(): never
     json_out(['ok' => true]);
 }
 
+function require_admin(): array
+{
+    $user = require_auth();
+    if ($user['role'] !== 'admin') {
+        json_error('Accès réservé aux administrateurs.', 403);
+    }
+    return $user;
+}
+
 /** Remplace toutes les données par l'état fourni (import / reset / seed). */
 function do_bulk(): never
 {
@@ -153,5 +166,88 @@ function do_bulk(): never
         json_error('Échec de l\'enregistrement en lot.', 500);
     }
 
+    json_out(['ok' => true]);
+}
+
+// ── Gestion des utilisateurs (admin seulement) ─────────────────────────
+
+function do_users_list(): never
+{
+    $rows = db()->query('SELECT id, email, name, role, active, created_at FROM users ORDER BY created_at ASC')->fetchAll();
+    $users = array_map(function ($r) {
+        return [
+            'id'         => $r['id'],
+            'email'      => $r['email'],
+            'name'       => $r['name'],
+            'role'       => $r['role'],
+            'active'     => (bool) $r['active'],
+            'created_at' => $r['created_at'],
+        ];
+    }, $rows);
+    json_out(['users' => $users]);
+}
+
+function do_users_upsert(): never
+{
+    $body     = json_body();
+    $id       = isset($body['id']) ? (string) $body['id'] : null;
+    $email    = strtolower(trim((string) ($body['email'] ?? '')));
+    $name     = trim((string) ($body['name'] ?? ''));
+    $role     = (string) ($body['role'] ?? 'manager');
+    $password = isset($body['password']) && $body['password'] !== '' ? (string) $body['password'] : null;
+
+    $allowed_roles = ['admin', 'manager', 'employee'];
+    if (!in_array($role, $allowed_roles, true)) {
+        json_error('Rôle invalide.');
+    }
+    if ($email === '' || $name === '') {
+        json_error('Courriel et nom requis.');
+    }
+
+    if ($id === null) {
+        // Création
+        if (!$password || strlen($password) < 8) {
+            json_error('Mot de passe d\'au moins 8 caractères requis.');
+        }
+        $newId = bin2hex(random_bytes(16));
+        $hash  = password_hash($password, PASSWORD_BCRYPT);
+        $stmt  = db()->prepare(
+            'INSERT INTO users (id, email, name, role, password_hash) VALUES (?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([$newId, $email, $name, $role, $hash]);
+        json_out(['id' => $newId]);
+    } else {
+        // Mise à jour
+        if ($password !== null) {
+            if (strlen($password) < 8) {
+                json_error('Mot de passe d\'au moins 8 caractères requis.');
+            }
+            $hash = password_hash($password, PASSWORD_BCRYPT);
+            $stmt = db()->prepare('UPDATE users SET email=?, name=?, role=?, password_hash=? WHERE id=?');
+            $stmt->execute([$email, $name, $role, $hash, $id]);
+        } else {
+            $stmt = db()->prepare('UPDATE users SET email=?, name=?, role=? WHERE id=?');
+            $stmt->execute([$email, $name, $role, $id]);
+        }
+        json_out(['ok' => true]);
+    }
+}
+
+function do_users_toggle(): never
+{
+    $body   = json_body();
+    $id     = (string) ($body['id'] ?? '');
+    $active = (int) (bool) ($body['active'] ?? false);
+
+    if ($id === '') {
+        json_error('Identifiant manquant.');
+    }
+    // Empêche de se désactiver soi-même
+    if ($id === ($_SESSION['uid'] ?? '') && !$active) {
+        json_error('Impossible de désactiver son propre compte.');
+    }
+
+    $stmt = db()->prepare('UPDATE users SET active=? WHERE id=?');
+    $stmt->execute([$active, $id]);
     json_out(['ok' => true]);
 }

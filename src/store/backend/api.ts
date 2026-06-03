@@ -1,5 +1,5 @@
 import type { AppState } from '@/domain/types';
-import type { Backend, Change, AuthUser } from './types';
+import type { Backend, Change, AuthUser, CrmUser } from './types';
 
 interface RuntimeConfig {
   apiBase: string;
@@ -52,6 +52,22 @@ export async function apiLogin(email: string, password: string): Promise<AuthUse
 export async function apiLogout(): Promise<void> {
   await call('logout', {});
   csrf = '';
+}
+
+// ── Gestion des utilisateurs (admin) ──────────────────────────────────
+export async function apiUsersList(): Promise<CrmUser[]> {
+  const data = await call<{ users: CrmUser[] }>('users_list');
+  return data.users;
+}
+
+export async function apiUsersUpsert(user: {
+  id?: string; email: string; name: string; role: string; password?: string;
+}): Promise<{ id?: string }> {
+  return call('users_upsert', user);
+}
+
+export async function apiUsersToggle(id: string, active: boolean): Promise<void> {
+  await call('users_toggle', { id, active });
 }
 
 // ── Synchronisation des données ────────────────────────────────────────

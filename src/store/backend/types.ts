@@ -19,6 +19,16 @@ export interface AuthUser {
   email: string;
   name: string;
   role: string;
+  active?: boolean;
+}
+
+export interface CrmUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  active: boolean;
+  created_at: string;
 }
 
 export interface Backend {

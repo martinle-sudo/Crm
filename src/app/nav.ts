@@ -12,6 +12,7 @@ import {
   Filter,
   BarChart3,
   Settings,
+  ShieldCheck,
 } from 'lucide-react';
 
 export type View =
@@ -26,13 +27,15 @@ export type View =
   | 'quotes'
   | 'leads'
   | 'reports'
-  | 'settings';
+  | 'settings'
+  | 'admin';
 
 export interface NavItem {
   view: View;
   label: string;
   icon: LucideIcon;
-  group: 'Pilotage' | 'Opérations' | 'Ventes' | 'Configuration';
+  group: 'Pilotage' | 'Opérations' | 'Ventes' | 'Configuration' | 'Administration';
+  adminOnly?: boolean;
 }
 
 export const NAV: NavItem[] = [
@@ -51,6 +54,8 @@ export const NAV: NavItem[] = [
   { view: 'invoices', label: 'Facturation', icon: Receipt, group: 'Ventes' },
 
   { view: 'settings', label: 'Paramètres', icon: Settings, group: 'Configuration' },
+
+  { view: 'admin', label: 'Utilisateurs', icon: ShieldCheck, group: 'Administration', adminOnly: true },
 ];
 
 export const VIEW_TITLES: Record<View, string> = Object.fromEntries(

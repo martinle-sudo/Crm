@@ -22,6 +22,7 @@ import { Quotes } from '@/features/quotes/Quotes';
 import { Leads } from '@/features/leads/Leads';
 import { Reports } from '@/features/reports/Reports';
 import { Settings } from '@/features/settings/Settings';
+import { AdminUsers } from '@/features/admin/Users';
 
 export function App() {
   const hydrated = useStore((s) => s.hydrated);
@@ -72,7 +73,7 @@ export function App() {
     <div className="flex min-h-screen">
       {/* Sidebar desktop */}
       <aside className="sticky top-0 hidden h-screen shrink-0 border-r border-white/5 lg:block">
-        <Sidebar view={view} onNavigate={setView} />
+        <Sidebar view={view} onNavigate={setView} canAdmin={authUser?.role === 'admin'} />
       </aside>
 
       {/* Sidebar mobile */}
@@ -93,7 +94,7 @@ export function App() {
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
               onClick={(e) => e.stopPropagation()}
             >
-              <Sidebar view={view} onNavigate={setView} onClose={() => setMobileNav(false)} />
+              <Sidebar view={view} onNavigate={setView} onClose={() => setMobileNav(false)} canAdmin={authUser?.role === 'admin'} />
             </motion.aside>
           </motion.div>
         )}
@@ -194,6 +195,8 @@ function ViewRouter({ view, onNavigate }: { view: View; onNavigate: (v: View) =>
       return <Reports />;
     case 'settings':
       return <Settings />;
+    case 'admin':
+      return <AdminUsers />;
     default:
       return null;
   }

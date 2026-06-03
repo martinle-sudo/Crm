@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Plus, Receipt, Trash2, CheckCircle2, Printer } from 'lucide-react';
+import { Plus, Receipt, Trash2, CheckCircle2, Printer, FileDown } from 'lucide-react';
+import { downloadInvoicePDF } from '@/features/billing/pdf';
 import { useStore } from '@/store/useStore';
 import type { Invoice, PaymentMethod } from '@/domain/types';
 import { Button } from '@/ui/Button';
@@ -203,6 +204,12 @@ function InvoiceView({
               </Button>
             </div>
           )}
+          <Button
+            variant="ghost"
+            onClick={() => downloadInvoicePDF(inv, client?.name ?? '—', client?.address, client?.email, company)}
+          >
+            <FileDown className="h-4 w-4" /> PDF
+          </Button>
           <Button variant="ghost" onClick={() => window.print()}><Printer className="h-4 w-4" /> Imprimer</Button>
           <Button variant="primary" onClick={onEdit}>Modifier</Button>
         </>

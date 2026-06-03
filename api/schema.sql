@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     email         VARCHAR(190) NOT NULL,
     name          VARCHAR(190) NOT NULL DEFAULT '',
     role          VARCHAR(32)  NOT NULL DEFAULT 'manager',
+    active        TINYINT(1)   NOT NULL DEFAULT 1,
     password_hash VARCHAR(255) NOT NULL,
     created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
